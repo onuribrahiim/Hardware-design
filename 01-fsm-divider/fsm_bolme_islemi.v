@@ -22,7 +22,7 @@ module fsm_bolme_islemi #(
     reg [W-1:0] r_bolen;                // Latched divisor register
     reg [W-1:0] r_bolunen;              // Working register for dividend / remainder
     reg         r_DURUM;                // Internal register for DURUM flag
-    reg [W-2:0] state;                  // State machine register
+    reg [2:0] state;                  // State machine register
     reg [W-1:0] r_sonuc;                // Quotient register holding final output
     reg [W-1:0] count;                  // Iterative subtraction counter (Quotient accumulator)
 
@@ -37,7 +37,7 @@ module fsm_bolme_islemi #(
     localparam L3    = 3'b011;          // Loop condition evaluation check
     localparam DONE  = 3'b100;          // Normal completion: assign quotient
     localparam IDLE  = 3'b101;          // Idle / Wait state for next operation
-    localparam out   = 3 meb110;         // Fault / Out-of-bounds state handling
+    localparam out   = 3'b110;         // Fault / Out-of-bounds state handling
     // Note: State 'out' code 3'b110 sets r_DURUM high
 
     // Synchronous FSM Control Block with Asynchronous Reset
