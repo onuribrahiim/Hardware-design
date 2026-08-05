@@ -1,55 +1,71 @@
 `timescale 1ns / 1ps
 
+// ============================================================================
+// Module Name: tb_fsm_bolme_islemi
+// Description: Testbench for verifying FSM Division Unit with Random Inputs
+// ============================================================================
+
 module tb_fsm_bolme_islemi();
 
-    // Parametre Tanımlaması
+    // Parametric Bit-Width Configuration
     parameter W = 4;
 
-    // Testbench Sinyalleri (DUT Girişleri 'reg', Çıkışları 'wire')
-    reg clk;
-    reg reset;
-    reg [W-1:0] bolunen;
-    reg [W-1:0] bolen;
+    // Testbench Stimulus and Verification Signals
+    reg          clk;
+    reg          reset;
+    reg          flag;
+    reg  [W-1:0] bolunen;
+    reg  [W-1:0] bolen;
     wire [W-1:0] sonuc;
-    wire DURUM;
+    wire         DURUM;
 
-    // Tasarlanan FSM Modülünün Çağrılması (DUT Instantation)
+    // Device Under Test (DUT) Instantiation
     fsm_bolme_islemi #(
         .W(W)
     ) fsm_bolme_islemi_dut (
-        .clk    (clk    ),
-        .reset  (reset  ),
+        .clk    (clk),
+        .reset  (reset),
+        .flag   (flag),
         .bolunen(bolunen),
-        .bolen  (bolen  ),
-        .sonuc  (sonuc  ),
-        .DURUM  (DURUM  )
+        .bolen  (bolen),
+        .sonuc  (sonuc),
+        .DURUM  (DURUM)
     );
 
-    // Saat (Clock) Sinyali Üretimi (20ns Periyot - 50 MHz)
-    initial begin 
+    // Clock Generation Process (50 MHz, 20ns Clock Period)
+    initial begin
         clk = 0;
         forever #10 clk = ~clk;
     end
 
-    // Test Senaryoları Bloğu
+    // Stimulus Generation Block
     initial begin
-        // Başlangıç Reset Durumu
+        // Initial Signal States
         reset = 1;
+        flag  = 0;
         bolunen = 0;
-        bolen = 0;
-        #10;
+        bolen   = 0;
+
+        // Apply Reset for 25ns
+        #25;
         reset = 0;
 
-        // 10 Defa Rastgele Değerler İle Bölme Testi
+        // Loop through 10 Random Test Vectors
         repeat(10) begin
+            // Generate Random Unsigned Inputs (Range: 0 to 2^W - 1)
             bolunen = $random % (2**W);
-            bolen   = ($random % ((2**W) - 1)) + 1; // Sıfıra bölme hatasını önlemek için 1-15 arası değer
-            
-            // FSM'in çıkarma adımlarını ve DONE durumunu tamamlaması için bekleme süresi
-            #190;
+            bolen   = $random % (2**W);
+
+            #5;
+            flag = 1;  // Assert trigger pulse to FSM
+            #20;
+            flag = 0;  // De-assert trigger pulse
+
+            // Wait 200ns to allow FSM state transitions and subtraction loops to complete
+            #200;
         end
 
-        // Simülasyonu Bitir
+        // End Simulation
         $finish;
     end
 
