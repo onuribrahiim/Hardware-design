@@ -63,6 +63,9 @@ module tb_fsm_bolme_islemi();
 
             // Wait 200ns to allow FSM state transitions and subtraction loops to complete
             #200;
+            
+            $display(" bolunen=%d , bolen=%d , sonuc=%d " , bolunen , bolen , sonuc);
+            
         end
 
         // End Simulation
