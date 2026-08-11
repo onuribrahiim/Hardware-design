@@ -1,128 +1,142 @@
 `timescale 1ns / 1ps
+//================================================================================
+// Proje Adı   : Veri Hata Kontrol Modülü (Data Control Module)
+// Dosya Adı   : data_control.v
+// Açıklama    : 3-bitlik giriş verisini (data_in) bit bit döndürerek (shift/rotate)
+//               tüm bitlerinin '1' olup olmadığını (3'b111 durumu) denetleyen FSM.
+//               Üst modülle (TOP) Request/Acknowledge (flag / o_ERR_done) el
+//               sıkışma protokolü ile haberleşir.
+//================================================================================
 
-/* ==============================================================================
- * Modül Adı    : data_control
- * Geliştirici  : İbrahim Onur
- * Açıklama     : Bu modül, 3 bitlik giriş verisini (data_in) dairesel kaydırma 
- *                (circular shift) yöntemiyle kontrol eder. Gelen verinin tüm 
- *                bitlerinin '1' (3'b111) olup olmadığını denetleyen bir 
- *                Sonlu Durum Makinesi (FSM) içerir. Tüm bitler '1' ise 
- *                hata çıkışı (o_ERR) aktif edilir.
- * ============================================================================== */
-
-module data_control(
-    input clk,               // Sistem saat sinyali
-    input reset,             // Asenkron reset sinyali (Aktif yüksek)
-    input [2:0] data_in,     // Kontrol edilecek 3-bitlik giriş verisi
-    input wire flag,         // FSM'i başlatan tetikleyici/kontrol bayrağı
+module data_control (
+    input  wire       clk,         // Sistem saati
+    input  wire       reset,       // Asenkron donanım reset sinyali (Aktif Yüksek)
+    input  wire [2:0] data_in,     // Kontrol edilecek 3-bitlik veri
+    input  wire       flag,        // Üst modülden gelen işlem başlatma isteği (Request)
     
-    output reg [2:0] o_ERR   // Hata çıkış sinyali (Hedef durum sağlandığında 3'b001 olur)
+    output reg        o_ERR,       // Hata bayrağı (1: Tüm bitler 1 / 0: Hata yok)
+    output wire       o_ERR_done   // İşlem bitti/hazır bayrağı (Acknowledge)
 );
 
-    // İç sinyaller ve register tanımlamaları
-    reg d_in;                // Kontrol edilen anlık bit (MSB)
-    reg [2:0] data_shift;    // Giriş verisinin tutulduğu register
-    reg [2:0] state;         // FSM durum register'ı
-    reg [2:0] temp;          // Kaydırma işlemlerinin yapıldığı geçici register
+    //----------------------------------------------------------------------------
+    // Dahili Yazmaçlar ve Bağlantılar (Internal Registers & Wires)
+    //----------------------------------------------------------------------------
+    reg [2:0] data_shift;  // Giriş verisinin ilk durumunu saklayan yazmaç
+    reg [2:0] temp;        // Bit döndürme (rotate) işlemleri için geçici yazmaç
+    reg [2:0] state;       // FSM mevcut durum yazmacı
+    reg       r_ERR_done;  // İşlem bitti sinyalini tutan iç yazmaç
+    reg       d_in;        // O anki kontrol edilen bit (temp[2])
 
-    // FSM Durumları (State Encoding)
-    localparam start = 3'd0; // Başlangıç ve veri alma durumu
-    localparam S0    = 3'd1; // İlk kaydırma işlemi
-    localparam S1    = 3'd2; // 1. bitin kontrolü
-    localparam S2    = 3'd3; // İkinci kaydırma işlemi
-    localparam S3    = 3'd4; // 2. bitin kontrolü
-    localparam S4    = 3'd5; // Üçüncü kaydırma işlemi
-    localparam S5    = 3'd6; // 3. bitin kontrolü ve hata ataması
-    localparam IDLE  = 3'd7; // Bekleme/Sıfırlama durumu
+    // Sürekli Atama (Continuous Assignment)
+    assign o_ERR_done = r_ERR_done;
 
-    // Kombinezonal Blok: d_in her zaman temp register'ının en anlamlı bitini (MSB) okur
+    //----------------------------------------------------------------------------
+    // FSM Durum Tanımlamaları (State Encoding)
+    //----------------------------------------------------------------------------
+    localparam START = 3'd0;  // Başlangıç ve Istek (flag) bekleme durumu
+    localparam S0    = 3'd1;  // 1. Bit kaydırma/hazırlık adımı
+    localparam S1    = 3'd2;  // 1. Bit kontrol adımı
+    localparam S2    = 3'd3;  // 2. Bit kaydırma adımı
+    localparam S3    = 3'd4;  // 2. Bit kontrol adımı
+    localparam S4    = 3'd5;  // 3. Bit kaydırma adımı
+    localparam S5    = 3'd6;  // 3. Bit kontrol ve Hata Karar adımı
+    localparam DONE  = 3'd7;  // Tamamlandı/El sıkışma bekleme durumu
+
+    // Combinational MUX: Kontrol edilecek biti daima temp yazmacının MSB'sinden al
     always @(*) begin
         d_in = temp[2];
     end
 
-    // Ardışıl Blok: FSM ve senkron/asenkron atamalar
+    //----------------------------------------------------------------------------
+    // FSM Mantıksal Bloğu (Sequential Logic)
+    //----------------------------------------------------------------------------
     always @(posedge clk or posedge reset) begin
-        
-        // Asenkron Reset Bloğu
         if (reset) begin
-            state      <= start; // State 0'a çekilir (start)
-            o_ERR      <= 0;
-            data_shift <= 0;
-            d_in       <= 0;
-            temp       <= 0;
-        end 
-        
-        // FSM İşleyiş Bloğu
-        else begin
+            state      <= START;
+            o_ERR      <= 1'b0;
+            data_shift <= 3'd0;
+            temp       <= 3'd0;
+            r_ERR_done <= 1'b0;
+        end else begin
             case (state)
-                
-                // Başlangıç: Veriyi kaydırma register'ına al ve bayrağı bekle
-                start: begin
-                    data_shift <= data_in;
+
+                // --- 1. Başlangıç Durumu ---
+                START : begin
+                    o_ERR      <= 1'b0;
+                    r_ERR_done <= 1'b0;
+                    data_shift <= data_in; // Giriş verisini mandalla (latch)
                     if (flag)
-                        state <= S0;
+                        state  <= S0;      // Istek geldiğinde seriyi başlat
                 end
-                
-                // S0: İlk dairesel sola kaydırma (circular left shift) işlemi
-                S0: begin
+
+                // --- 2. Birinci Bit Kontrolü (data_shift[1]) ---
+                S0 : begin
+                    // Dairesel sola kaydırma (Rotate Left)
                     temp  <= {data_shift[1:0], data_shift[2]};
                     state <= S1;
                 end
                 
-                // S1: 1. Bit Kontrolü
-                S1: begin
-                    if (d_in == 1'b1) begin
-                        state <= S2; // Bit '1' ise kontrol etmeye devam et
+                S1 : begin
+                    if (d_in) begin
+                        state <= S2; // 1. bit '1' ise 2. biti kontrole geç
                     end else begin
-                        o_ERR <= 0;
-                        state <= IDLE; // Bit '0' ise kontrolü iptal et
+                        // Bit '0' ise 3'b111 olamaz, erken çıkış yap (Hata Yok)
+                        o_ERR      <= 1'b0;
+                        r_ERR_done <= 1'b1;
+                        state      <= DONE;
                     end
                 end
-                
-                // S2: İkinci dairesel sola kaydırma işlemi
-                S2: begin
+
+                // --- 3. İkinci Bit Kontrolü (data_shift[0]) ---
+                S2 : begin
                     temp  <= {temp[1:0], temp[2]};
                     state <= S3;
                 end
                 
-                // S3: 2. Bit Kontrolü
-                S3: begin
-                    if (d_in == 1'b1) begin
-                        state <= S4; // Bit '1' ise devam et
+                S3 : begin
+                    if (d_in) begin
+                        state <= S4; // 2. bit de '1' ise son biti kontrole geç
                     end else begin
-                        o_ERR <= 0;
-                        state <= IDLE;
+                        // Bit '0' ise erken çıkış yap (Hata Yok)
+                        o_ERR      <= 1'b0;
+                        r_ERR_done <= 1'b1;
+                        state      <= DONE;
                     end
                 end
-                
-                // S4: Üçüncü dairesel sola kaydırma işlemi
-                S4: begin
+
+                // --- 4. Üçüncü Bit Kontrolü ve Karar (data_shift[2]) ---
+                S4 : begin
                     temp  <= {temp[1:0], temp[2]};
                     state <= S5;
                 end
                 
-                // S5: 3. Bit Kontrolü ve Sonuç
-                S5: begin
-                    if (d_in == 1'b1) begin
-                        o_ERR <= 1;    // Tüm bitler '1' çıktı, hata (ERR) sinyalini yak
-                        state <= IDLE;
-                    end else begin
-                        o_ERR <= 0;
-                        state <= IDLE;
+                S5 : begin
+                    // 3 bitin üçü de 1 ise d_in=1 olur ve o_ERR=1 basılır
+                    o_ERR      <= d_in;   
+                    r_ERR_done <= 1'b1;
+                    state      <= DONE;
+                end
+
+                // --- 5. El Sıkışma (Handshake) Bekleme Durumu ---
+                // Üst modül flag sinyalini sıfırlayana kadar sonucu tutar.
+                DONE : begin
+                    r_ERR_done <= 1'b1; // İşlem tamamlandı bildirimi
+                    if (!flag) begin
+                        // Üst modül isteği indirdiğinde (ack alındığında) sıfırla
+                        r_ERR_done <= 1'b0;
+                        data_shift <= 3'd0;
+                        temp       <= 3'd0;
+                        state      <= START;
                     end
                 end
-                
-                // IDLE: Döngüyü başa sar
-                IDLE: begin
-                    state <= start;
+
+                // --- Default Durum (Kilitlenmeyi Önleme) ---
+                default : begin
+                    state      <= START;
+                    o_ERR      <= 1'b0;
+                    r_ERR_done <= 1'b0;
                 end
-                
-                // Default: Güvenlik amaçlı (istenmeyen bir duruma girilirse başa dön)
-                default: begin
-                    state <= start;
-                    o_ERR <= 0;
-                end
-                
+
             endcase
         end
     end
