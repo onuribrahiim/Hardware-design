@@ -1,106 +1,123 @@
 `timescale 1ns / 1ps
-
-// ============================================================================
-// Module Name: fsm_bolme_islemi
-// Description: Parametric Division Algorithm using Sequential Subtraction FSM
-// Param W    : Data bit-width for dividend, divisor, and quotient
-// ============================================================================
+//================================================================================
+// Proje Adı   : FSM Tabanlı Ardışık Bölme Modülü (Sequential Divider)
+// Dosya Adı   : fsm_bolme_islemi.v
+// Açıklama    : Parametrik bit genişliğine (W) sahip, çıkarma yöntemiyle 
+//               bölüm (quotient) ve kalan (remainder) hesabını gerçekleştiren 
+//               Sonlu Durum Makinesi (FSM).
+//================================================================================
 
 module fsm_bolme_islemi #(
-    parameter W = 4                     // Default bit-width set to 4 bits
+    parameter W = 4  // İşlenecek verilerin bit genişliği (default: 4-bit)
 )(
-    input  wire         clk,            // System Clock
-    input  wire         reset,          // Active-High Asynchronous Reset
-    input  wire         flag,           // Trigger signal to restart processing from IDLE
-    input  wire [W-1:0] bolunen,        // Dividend input operand
-    input  wire [W-1:0] bolen,          // Divisor input operand
-    output wire [W-1:0] sonuc,          // Calculated Quotient output
-    output wire         DURUM           // Error Status Flag (1: Division by Zero or Undefined)
+    // --- Sistem Sinyalleri ---
+    input  wire         clk,      // Sistem saati
+    input  wire         reset,    // Asenkron donanım reset sinyali (Aktif Yüksek)
+    input  wire         flag,     // Bölme işlemini başlatan tetikleme sinyali (Start Flag)
+
+    // --- Giriş Verileri ---
+    input  wire [W-1:0] bolunen,  // Bölünen sayı (Dividend)
+    input  wire [W-1:0] bolen,    // Bölen sayı (Divisor)
+
+    // --- Çıkış Verileri ---
+    output wire [W-1:0] sonuc,    // Bölüm sonucu (Quotient)
+    output wire [W-1:0] kalan,    // Bölme işleminden kalan (Remainder)
+    output wire         DURUM     // Hata/Sıfıra Bölme durum bayrağı (Error/Invalid Flag)
 );
 
-    // Internal Registers
-    reg [W-1:0] r_bolen;                // Latched divisor register
-    reg [W-1:0] r_bolunen;              // Working register for dividend / remainder
-    reg         r_DURUM;                // Internal register for DURUM flag
-    reg [2:0] state;                  // State machine register
-    reg [W-1:0] r_sonuc;                // Quotient register holding final output
-    reg [W-1:0] count;                  // Iterative subtraction counter (Quotient accumulator)
+    //----------------------------------------------------------------------------
+    // Dahili Yazmaçlar ve Bağlantılar (Internal Registers & Wires)
+    //----------------------------------------------------------------------------
+    reg [W-1:0] r_bolen;      // Saklanan bölen değeri
+    reg [W-1:0] r_bolunen;    // Çıkarma işlemleri sırasında güncellenen bölünen
+    reg         r_DURUM;      // Hata durumunu tutan yazmaç
+    reg [2:0]   state;        // FSM mevcut durum yazmacı
+    reg [W-1:0] r_sonuc;      // Bölüm sonucunu tutan yazmaç
+    reg [W-1:0] count;        // Kaç kez çıkarma yapıldığını sayan yazmaç (Bölüm)
+    reg [W-1:0] r_kalan;      // Kalan değerini tutan yazmaç
 
-    // Continuous Assignments to map internal registers to output ports
+    // Sürekli Atamalar (Continuous Assignments)
+    assign kalan = r_kalan;
     assign sonuc = r_sonuc;
     assign DURUM = r_DURUM;
 
-    // FSM State Encoding Definition (3-bit state codes)
-    localparam start = 3'b000;          // Initialize and sample inputs
-    localparam L1    = 3'b001;          // Initial validity check (Dividend >= Divisor)
-    localparam L2    = 3'b010;          // Subtraction step: remainder = remainder - divisor
-    localparam L3    = 3'b011;          // Loop condition evaluation check
-    localparam DONE  = 3'b100;          // Normal completion: assign quotient
-    localparam IDLE  = 3'b101;          // Idle / Wait state for next operation
-    localparam out   = 3'b110;         // Fault / Out-of-bounds state handling
-    // Note: State 'out' code 3'b110 sets r_DURUM high
+    //----------------------------------------------------------------------------
+    // FSM Durum Tanımlamaları (State Encoding)
+    //----------------------------------------------------------------------------
+    localparam start = 3'b000;  // Değişkenlerin ilklendirilmesi (Initialization)
+    localparam L1    = 3'b001;  // Bölünebilirlik ve 0'a bölme kontrolü
+    localparam L2    = 3'b010;  // Çıkarma adımı ve sayaç artırma
+    localparam L3    = 3'b011;  // Döngü kontrol adımı
+    localparam DONE  = 3'b100;  // Başarılı bitiş ve sonuçların kaydedilmesi
+    localparam IDLE  = 3'b101;  // Yeni tetikleme bekleniyor
+    localparam out   = 3'b110;  // Hata durumu (Örn: 0'a bölme hatası)
 
-    // Synchronous FSM Control Block with Asynchronous Reset
+    //----------------------------------------------------------------------------
+    // FSM ve Mantıksal Blok (Sequential Logic)
+    //----------------------------------------------------------------------------
     always @(posedge clk or posedge reset) begin
         if (reset) begin
             state <= start;
         end else begin
             case (state)
                 
-                // STATE 0: Sample input signals and set default internal counts
+                // --- 1. Başlangıç Durumu ---
                 start: begin
                     r_bolunen <= bolunen;
                     r_bolen   <= bolen;
-                    r_sonuc   <= 0;
-                    count     <= 0;
-                    r_DURUM   <= 0;
+                    r_kalan   <= {W{1'b0}};
+                    r_sonuc   <= {W{1'b0}};
+                    count     <= {W{1 me0}};
+                    r_DURUM   <= 1'b0;
                     state     <= L1;
                 end
                 
-                // STATE 1: Check if the dividend is immediately smaller than the divisor
+                // --- 2. Kontrol Durumu ---
+                // Bölen 0 değilse ve bölünen büyük/eşitse çıkarma döngüsüne girer.
                 L1: begin
-                    if (r_bolunen >= r_bolen) begin
+                    if (r_bolunen >= r_bolen && r_bolen != 0) begin
                         state <= L2;
                     end else begin
-                        state <= out;   // Skip computation if dividend < divisor
+                        state <= out; // Hata veya yetersiz bölünen durumu
                     end
                 end
                 
-                // STATE 2: Perform iterative subtraction and increment step counter
+                // --- 3. Çıkarma İşlemi ---
                 L2: begin
                     r_bolunen <= r_bolunen - r_bolen;
-                    count     <= count + 1;
+                    count     <= count + 1'b1;
                     state     <= L3;     
                 end
                 
-                // STATE 3: Check if further subtraction loops are possible
+                // --- 4. Döngü Karar Adımı ---
                 L3: begin
                     if (r_bolunen >= r_bolen) begin
-                        state <= L2;   // Continue subtraction loop
+                        state <= L2;   // Çıkarmaya devam et
                     end else begin
-                        state <= DONE; // Exit loop, division complete
+                        state <= DONE; // Çıkarma bitti, kalan elde edildi
                     end
                 end
                 
-                // STATE 4: Finalize normal division result
+                // --- 5. Hata Çıkış Durumu ---
+                out: begin  
+                    r_DURUM <= 1'b1;   // Hata bayrağını kaldır
+                    state   <= IDLE;
+                end
+                
+                // --- 6. Başarılı Tamamlanma ---
                 DONE: begin
-                    r_sonuc <= count;
+                    r_kalan <= r_bolunen; // Kalan değer ataması
+                    r_sonuc <= count;     // Elde edilen bölüm ataması
                     state   <= IDLE;
                 end 
                 
-                // STATE 6: Set flag for special/out-of-bound edge cases
-                out: begin  
-                    r_DURUM <= 1;      
-                    state   <= IDLE;
-                end
-                
-                // STATE 5: Standby state - wait for external trigger signal 'flag'
+                // --- 7. Boşta/Bekleme Durumu ---
                 IDLE: begin 
                     if (flag)
-                        state <= start; 
+                        state <= start;  // Yeni işlem tetiklendi
                 end
                 
-                // Safety Recovery Default State
+                // --- Default Durum (Kilitlenmeyi Önleme) ---
                 default: begin
                     state <= start;
                 end
