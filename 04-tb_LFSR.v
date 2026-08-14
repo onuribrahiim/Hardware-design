@@ -1,66 +1,46 @@
-`timescale 1ns / 1ps // Simülasyon zaman birimi (1ns) ve çözünürlüğü (1ps)
+`timescale 1ns / 1ps // Zaman ölçeği: 1ns simülasyon birimi / 1ps çözünürlük
 
-// ============================================================================
-// Modül İsmi: tb_LFSR (Testbench for Linear Feedback Shift Register)
-// Tanım     : LFSR modülünün işlevsel doğrulama ve zamanlama simülasyon testi
-// ============================================================================
-module tb_LFSR();
+module tb_new_LFSR();
+parameter DATA_WIDTH =6; // Veri genişliği (6-bit = 2^6 - 1 = 63 adımlık Maximal Length periyodu)
 
-// ============================================================================
-// 1. PARAMETRE TANIMLAMALARI
-// ============================================================================
-parameter DW_LFSR = 6; // Test edilecek LFSR bit genişliği (6-bit)
+// --- Sinyal Tanımlamaları ---
+reg                     clk                     ; // Saat sinyali
+reg                     reset                   ; // Reset sinyali
+reg  [DATA_WIDTH-1:0] data_in  ; // Başlangıç değeri (Seed)
+wire  [DATA_WIDTH-1:0] data     ; // LFSR'den üretilen rastgele sayı
+wire [0:0] o_ERR                ; // Kilitlenme / Hata bayrağı
 
-// ============================================================================
-// 2. SİNYAL TANIMLAMALARI
-// ============================================================================
-// DUT girişlerine değer sürmek için 'reg' tanımlamaları
-reg                   i_clk_LFSR;   // Testbench saat sinyali
-reg                   i_reset_LFSR; // Reset ve tohum yükleme kontrol sinyali
-reg  [DW_LFSR-1:0]    i_data_LFSR;  // Yüklenecek rastgele tohum (seed) değeri
-
-// DUT çıkışını izlemek için 'wire' tanımlaması
-wire [DW_LFSR-1:0]    o_data_LFSR;  // Üretilen yarı-rastgele sayı dizilimi çıkışı
-
-// ============================================================================
-// 3. TEST EDİLEN DEVRENİN (DUT) BAĞLANMASI
-// ============================================================================
-LFSR #(
-    .DW_LFSR(DW_LFSR)
-) DUT ( 
-    .i_clk_LFSR   (i_clk_LFSR  ),
-    .i_reset_LFSR (i_reset_LFSR),
-    .i_data_LFSR  (i_data_LFSR ),
-    .o_data_LFSR  (o_data_LFSR )
+// --- Test Edilecek Modülün (DUT) Çağrılması ---
+new_LFSR #(
+.DATA_WIDTH(DATA_WIDTH)
+)LFSR_DUT(
+.clk    (clk    ),
+.reset  (reset  ),
+.data_in(data_in),
+.data   (data   ),
+.o_ERR  (o_ERR  )
 );
 
-// ============================================================================
-// 4. CLOCK (SAAT) ÜRETİMİ
-// ============================================================================
-// 30ns periyotlu (Her 15ns'de bir evrilen) saat sinyali üretimi
-initial begin
-    i_clk_LFSR = 0;
-    forever #15 i_clk_LFSR = ~i_clk_LFSR;
+// --- Saat Sinyali Üreteci (Periyot = 20ns) ---
+initial begin 
+clk=1;
+forever #10 clk=~clk; // Her 10ns'de bir saat durum değiştirir
 end
 
-// ============================================================================
-// 5. ANA TEST SENARYOSU
-// ============================================================================
+// --- Test Senaryosu ---
 initial begin
-    // --- BAŞLANGIÇ / RESET EVRESİ ---
-    i_reset_LFSR = 1;
-    
-    // SystemVerilog $random fonksiyonu ile 0-63 (2^6 - 1) arasında dinamik tohum üretimi
-    i_data_LFSR  = $random % (2**DW_LFSR);
-    
-    #20; // Tohumun devreboyunca oturması için 20ns bekle
+reset=1; // Reset aktif: LFSR'ye Seed yükleme durumu
+data_in=$random %(2**DATA_WIDTH); // Matris/RAM doldurmak için 0-63 arası rastgele Seed seçimi
+#20; // 1 clock periyodu bekle
+$display("data_in=%d",data_in); // Yüklenen Seed değerini ekrana bas
+reset=0; // Reset kaldırılır, LFSR kendi içinde kaydırmaya başlar
 
-    // --- DÖNGÜ VE RASTGELE SAYI ÜRETİM EVRESİ ---
-    i_reset_LFSR = 0; // Reset kaldırılır, LFSR kaydırmaya ve XOR üretimine başlar
-
-    #1000; // Ardışık durum geçişlerini ve periyodu gözlemlemek için 1000ns koştur
-
-    $finish; // Simülasyonu sonlandır
+// Maximal Length Testi: 6-bit LFSR en fazla 63 adımlık tekrarsız dizi üretir.
+// repeat(70) ile hem 63 adımlık dizilimi hem de başa dönüş periyodunu doğruluyoruz.
+repeat(70)begin
+#20; // Her saat darbesinde bekle
+$display("data=%d",data); // Üretilen psödo-rastgele veriyi ekrana bas
 end
-
+$finish; // Simülasyonu bitir
+end
 endmodule
