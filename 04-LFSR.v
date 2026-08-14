@@ -1,45 +1,36 @@
-`timescale 1ns / 1ps // Simülasyon zaman birimi (1ns) ve çözünürlüğü (1ps)
+`timescale 1ns / 1ps // Zaman ölçeği: 1ns simülasyon adımı / 1ps hassasiyet
 
-// ============================================================================
-// Modül İsmi: LFSR (Linear Feedback Shift Register)
-// Tanım     : Parametrik Yarı-Rastgele (Pseudo-Random) Sayı Üreticisi
-// ============================================================================
-module LFSR #(
-    parameter DW_LFSR = 6 // LFSR bit genişliği parametresi (Varsayılan: 6-bit)
+module new_LFSR #(
+parameter DATA_WIDTH =6 // Parametrik veri genişliği (Varsayılan: 6 bit)
 )
 (
-    input                  i_clk_LFSR,   // Sistem saat sinyali
-    input                  i_reset_LFSR, // Senkron reset ve tohum (seed) yükleme sinyali
-    input [DW_LFSR-1:0]    i_data_LFSR,  // Başlangıç tohum değeri (Initial Seed)
+input wire                    clk       , // Saat sinyali
+input wire                    reset     , // Asenkron reset sinyali (Active-High)
+input wire [DATA_WIDTH-1:0]  data_in    , // Dışarıdan verilen başlangıç değeri (Seed)
+output reg [DATA_WIDTH-1:0]  data       , // Üretilen psödo-rastgele sayı çıkışı
+output reg [0:0]              o_ERR        // Sıfır/Kilitlenme hata bayrağı (Active-High)
 
-    output[DW_LFSR-1:0]    o_data_LFSR   // Üretilen rastgele sayı çıkış portu
 );
 
-    // LFSR durumunu tutan iç kaydırmalı kaydedici (Internal Shift Register)
-    reg [DW_LFSR-1:0] random_LFSR;
+// Geri besleme (Feedback) hesabı: En üst bit (MSB) ile en alt bit (LSB) XOR'lanarak yeni bit üretilir
+wire [0:0] feedback = data[DATA_WIDTH-1] ^  data[DATA_WIDTH-6] ;
 
-    // İç kaydedicideki güncel değeri sürekli olarak çıkışa aktar
-    assign o_data_LFSR = random_LFSR;
 
-    // Yükselen saat kenarında çalışan senkron mantık bloğu
-    always @(posedge i_clk_LFSR) begin
-        if (i_reset_LFSR) begin
-            // Reset durumunda dışarıdan verilen tohum (seed) değerini yükle
-            random_LFSR <= i_data_LFSR;
-            
-            // Kilitlenme (Lockup) Koruması:
-            // LFSR mimarisinde tüm bitlerin '0' olması durumu devreyi kilitler (XOR sonucu hep 0 kalır).
-            // Eğer girilen tohum değeri '0' ise güvenlik amacıyla tüm bitleri '1' yap.
-            if (i_data_LFSR == 0) begin
-                random_LFSR <= {DW_LFSR{1'b1}}; 
-            end
-            
-        end else begin
-            // Normal Çalışma Durumu:
-            // 1. Bitleri 1 pozisyon sola kaydır ([DW_LFSR-2:0]).
-            // 2. En sağdaki LSB bitine Tap noktalarının (Bit 4 ve Bit 1) XOR geri besleme sonucunu yaz.
-            random_LFSR <= {random_LFSR[DW_LFSR-2:0], (random_LFSR[4] ^ random_LFSR[1])};
-        end
+    // Saat veya Reset'in yükselen kenarında tetiklenen ardışıl (sequential) mantık bloğu
+    always @(posedge clk or posedge reset) begin
+           if(reset)begin
+             data<=data_in; // Reset anında dışarıdan verilen Seed verisini kaydırmalı yazmaca yükle
+             o_ERR<=0;      // Reset anında hata bayrağını temizle
+           end else begin
+           if(data!=0)begin
+           // Veri sıfırdan farklıysa: Yeni feedback bitini başa ekle ve veriyi 1 bit sağa kaydır
+           data<={feedback,data[DATA_WIDTH-1:1]};
+           o_ERR<=0; // Sistem normal çalıştığı sürece hata bayrağı pasif
+           end else begin
+            o_ERR<=1; // Veri sıfıra düşerse (kilitlenme durumu) hata bayrağını aktif yap
+           end
+           end
     end
+
 
 endmodule
