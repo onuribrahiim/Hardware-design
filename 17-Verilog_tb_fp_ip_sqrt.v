@@ -1,127 +1,162 @@
-// ============================================================================
-// File Name   : tb_fpip_sqrt.v
-// Module Name : tb_fpip_sqrt
-// Description : Testbench for Floating-Point Square Root Wrapper (fpip_sqrt)
-//               Applies IEEE-754 single-precision test vectors to verify
-//               the FSM behavior and core output logic.
-//
-// Author      : Halil İbrahim Onur
-// Target Board: Nexys A7-100T / Xilinx FPGA Simulation
-// ============================================================================
-
 `timescale 1ns / 1ps
 
-module tb_fpip_sqrt();
+/**
+ * @file tb_fpip_sqrt.v
+ * @brief Testbench for Floating-Point Square Root IP Core (IEEE-754 Single Precision)
+ * @details Validates test cases including standard positive values, zero edge case,
+ *          and invalid operations such as square root of a negative floating-point number.
+ */
 
-    // ========================================================================
-    // Parametre ve Sinyal Tanımlamaları
-    // ========================================================================
+module tb_fpip_sqrt ();
+
+    //--------------------------------------------------------------------------
+    // Parameters & Signals Declaration
+    //--------------------------------------------------------------------------
     parameter DATA_WIDTH = 32;
 
-    reg                   clk;
-    reg                   reset;
-    reg                   start_signal;
-    reg  [DATA_WIDTH-1:0] data_in;
+    reg                  clk;
+    reg                  reset;
+    reg                  start_system;
+    reg [DATA_WIDTH-1:0] data_in;
+    
     wire [DATA_WIDTH-1:0] data_out;
-    wire                  done_finish_signal;
+    wire                  out_done;
 
-    // ========================================================================
-    // Test Edilecek Modülün (DUT - Device Under Test) Örneklenmesi
-    // ========================================================================
+    //--------------------------------------------------------------------------
+    // Device Under Test (DUT) Instantiation
+    //--------------------------------------------------------------------------
     fpip_sqrt #(
         .DATA_WIDTH(DATA_WIDTH)
-    ) fpip_sqrt_DUT (    
-        .clk                (clk),
-        .reset              (reset),
-        .start_signal       (start_signal),
-        .data_in            (data_in),
-        .data_out           (data_out),
-        .done_finish_signal (done_finish_signal)
+    ) fpip_sqrt_DUT (
+        .clk          (clk          ),
+        .reset        (reset        ),
+        .start_system (start_system ),
+        .data_in      (data_in      ),
+        .data_out     (data_out     ),
+        .out_done     (out_done     )
     );
 
-    // ========================================================================
-    // Saat Sinyali Üretimi (Clock Generator: 100 MHz -> Period = 10ns)
-    // ========================================================================
-    always #5 clk = ~clk;
+    //--------------------------------------------------------------------------
+    // Clock Generation (50 MHz -> 20ns period)
+    //--------------------------------------------------------------------------
+    always #10 clk = ~clk; 
 
-    // ========================================================================
-    // Test Senaryoları (Initial Block)
-    // ========================================================================
+    //--------------------------------------------------------------------------
+    // Watchdog Timer (Timeout Guard)
+    //--------------------------------------------------------------------------
     initial begin
-        // --- 1. Başlangıç Durumu ve Reset Uygulama ---
-        clk          = 1'b0;
+        #500000;
+        $display("[ERROR] Watchdog timeout reached! Simulation terminated.");
+        $finish;
+    end 
+
+    //--------------------------------------------------------------------------
+    // Test Stimulus & Verification
+    //--------------------------------------------------------------------------
+    initial begin
+        // System Initialization
+        data_in      = 32'h0;
         reset        = 1'b1;
-        start_signal = 1'b0;
-        data_in      = {DATA_WIDTH{1'b0}};
+        clk          = 1'b0;
+        start_system = 1'b0;
 
-        // 4 clock cycle boyunca sistemi reset altında tut
-        repeat(4) @(posedge clk);
-        reset        = 1'b0;
+        // Apply Reset
         repeat(2) @(posedge clk);
+        reset = 1'b0;
 
-        // --------------------------------------------------------------------
-        // TEST 1: sqrt(0.36) = 0.6
-        // Girdi Hex  : 0x3EB851EC (0.36 IEEE-754 single precision)
-        // Beklenen   : ~0.600000 (IEEE-754: 0x3F19999A)
-        // --------------------------------------------------------------------
-        $display("\n==========================================");
-        $display("[TEST 1] sqrt(0.36) hesaplamasi baslatildi.");
-        $display("Girdi (Hex): 0x3EB851EC | Deger: 0.36");
+        //======================================================================
+        // TEST 1: sqrt(0.25) = 0.5
+        // IEEE-754: 0.25 -> 0x3E800000 | 0.5 -> 0x3F000000
+        //======================================================================
+        $display("\n------- TEST 1 -------");
+        $display("Calculating sqrt(0.25)... Expected Result = 0.5");
         
-        start_signal = 1'b1;
-        data_in      = 32'b00111110101110000101000111101100; // 0.36
-        
-        repeat(4) @(posedge clk);
-        start_signal = 1'b0; // Start sinyalini indir
+        data_in      = 32'h3e800000;
+        start_system = 1'b1;
+        wait(out_done);
+        @(posedge clk);
+        start_system = 1'b0;
 
-        // İşlemin tamamlanmasını ve done_finish_signal sinyalinin gelmesini bekle
-        wait(done_finish_signal);
-        $display("Sonuc Alindi (Hex): 0x%h", data_out);
-        $display("==========================================");
+        $display("Input = %h | Output = %h | Expected = 3f000000 | Status: %s",
+                 data_in, data_out, (data_out == 32'h3f000000) ? "PASS" : "FAIL");
+        
         repeat(6) @(posedge clk);
 
-        // --------------------------------------------------------------------
-        // TEST 2: sqrt(0.00025) = 0.015811
-        // Girdi Hex  : 0x3983126F (0.00025 IEEE-754 single precision)
-        // Beklenen   : ~0.015811 (IEEE-754: 0x3C81966F)
-        // --------------------------------------------------------------------
-        $display("\n==========================================");
-        $display("[TEST 2] sqrt(0.00025) hesaplamasi baslatildi.");
-        $display("Girdi (Hex): 0x3983126F | Deger: 0.00025");
+        //======================================================================
+        // TEST 2: sqrt(0.36) = 0.6
+        // IEEE-754: 0.36 -> 0x3EB851EC | 0.6 -> 0x3F19999A
+        //======================================================================
+        $display("\n------- TEST 2 -------");
+        $display("Calculating sqrt(0.36)... Expected Result = 0.6");
         
-        start_signal = 1'b1;
-        data_in      = 32'b00111001100000110001001001101111; // 0.00025
-        
-        repeat(4) @(posedge clk);
-        start_signal = 1'b0;
+        data_in      = 32'h3eb851ec;
+        start_system = 1'b1;
+        wait(out_done);
+        @(posedge clk);
+        start_system = 1'b0;
 
-        wait(done_finish_signal);
-        $display("Sonuc Alindi (Hex): 0x%h", data_out);
-        $display("==========================================");
+        $display("Input = %h | Output = %h | Expected = 3f19999a | Status: %s",
+                 data_in, data_out, (data_out == 32'h3f19999a) ? "PASS" : "FAIL");
+        
         repeat(6) @(posedge clk);
 
-        // --------------------------------------------------------------------
-        // TEST 3: sqrt(12.36) = 3.515679
-        // Girdi Hex  : 0x4145C28F (12.36 IEEE-754 single precision)
-        // Beklenen   : ~3.515679 (IEEE-754: 0x40610313)
-        // --------------------------------------------------------------------
-        $display("\n==========================================");
-        $display("[TEST 3] sqrt(12.36) hesaplamasi baslatildi.");
-        $display("Girdi (Hex): 0x4145C28F | Deger: 12.36");
+        //======================================================================
+        // TEST 3: sqrt(0.1296) = 0.36
+        // IEEE-754: 0.1296 -> 0x3E04B5DD | 0.36 -> 0x3EB851EC
+        //======================================================================
+        $display("\n------- TEST 3 -------");
+        $display("Calculating sqrt(0.1296)... Expected Result = 0.36");
         
-        start_signal = 1'b1;
-        data_in      = 32'b01000001010001011100001010001111; // 12.36
-        
-        repeat(4) @(posedge clk);
-        start_signal = 1'b0;
+        data_in      = 32'h3e04b5dd;
+        start_system = 1'b1;
+        wait(out_done);
+        @(posedge clk);
+        start_system = 1'b0;
 
-        wait(done_finish_signal);
-        $display("Sonuc Alindi (Hex): 0x%h", data_out);
-        $display("==========================================");
+        $display("Input = %h | Output = %h | Expected = 3eb851ec | Status: %s",
+                 data_in, data_out, (data_out == 32'h3eb851ec) ? "PASS" : "FAIL");
+        
         repeat(6) @(posedge clk);
 
-        // --- Simülasyonu Bitir ---
-        $display("\n[SIMULATION FINISHED] Tum testler basariyla tamamlandi.\n");
+        //======================================================================
+        // TEST 4: Edge Case - sqrt(0.0) = 0.0
+        // IEEE-754: 0.0 -> 0x00000000
+        //======================================================================
+        $display("\n------- TEST 4 -------");
+        $display("Calculating sqrt(0.0)... Expected Result = 0.0");
+        
+        data_in      = 32'h00000000;
+        start_system = 1'b1;
+        wait(out_done);
+        @(posedge clk);
+        start_system = 1'b0;
+
+        $display("Input = %h | Output = %h | Expected = 00000000 | Status: %s",
+                 data_in, data_out, (data_out == 32'h00000000) ? "PASS" : "FAIL");
+        
+        repeat(6) @(posedge clk);
+
+        //======================================================================
+        // TEST 5: Invalid Operation - sqrt(-0.81)
+        // IEEE-754 Input: -0.81 -> 0xBF4F5C29
+        // IEEE-754 Expected Output: NaN (Quiet NaN) -> 0x7FC00000
+        //======================================================================
+        $display("\n------- TEST 5 -------");
+        $display("Calculating sqrt(-0.81)... Expected Result = NaN (Quiet NaN)");
+        
+        data_in      = 32'hbf4f5c29;
+        start_system = 1'b1;
+        wait(out_done);
+        @(posedge clk);
+        start_system = 1'b0;
+
+        $display("Input = %h | Output = %h | Expected = 7fc00000 | Status: %s",
+                 data_in, data_out, (data_out == 32'h7fc00000) ? "PASS" : "FAIL");
+        
+        repeat(6) @(posedge clk);
+
+        // Finish Simulation
+        $display("\n[INFO] All test vectors executed successfully.");
         $finish;
     end
 
