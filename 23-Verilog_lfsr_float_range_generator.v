@@ -124,18 +124,18 @@ RAM_Design #(
 reg [3:0           ] state  ;
 reg [ADDR_WIDTH-1:0] counter;
 
-localparam START              = 4'b0000 ;
-localparam LFSR_ENABLE        = 4'b0001 ;
-localparam IP_CONTROL         = 4'b0010 ;
-localparam HANDSHAKE_IP       = 4'b0011 ;
-localparam SITUATION_ANALYSIS = 4'b0100 ;
-localparam CLEAR              = 4'b0101 ; 
-localparam WRITING_PREPARATION  = 4'b0110 ;
-localparam WRITE_RAM          = 4'b0111 ;
-localparam READ_PREPARATION           = 4'b1000 ;
-localparam READ_RAM                 = 4'b1001 ; 
-localparam READ_RESULT        = 4'b1010 ;  
-localparam IDLE               = 4'b1011 ;
+localparam START               = 4'b0000 ;
+localparam LFSR_ENABLE         = 4'b0001 ;
+localparam IP_CONTROL          = 4'b0010 ;
+localparam HANDSHAKE_IP        = 4'b0011 ;
+localparam SITUATION_ANALYSIS  = 4'b0100 ;
+localparam CLEAR               = 4'b0101 ; 
+localparam WRITING_PREPARATION = 4'b0110 ;
+localparam WRITE_RAM           = 4'b0111 ;
+localparam READ_PREPARATION    = 4'b1000 ;
+localparam READ_RAM            = 4'b1001 ; 
+localparam READ_RESULT         = 4'b1010 ;  
+localparam IDLE                = 4'b1011 ;
 
 
 
